@@ -22,6 +22,7 @@ MAX_POSITION_SIZE_USD = float(os.getenv("MAX_POSITION_SIZE_USD", "5.0"))
 MAX_DAILY_LOSS_USD = float(os.getenv("MAX_DAILY_LOSS_USD", "10.0"))
 MIN_CONFIDENCE_THRESHOLD = float(os.getenv("MIN_CONFIDENCE_THRESHOLD", "0.7"))
 MAX_POSITION_FRACTION = float(os.getenv("MAX_POSITION_FRACTION", "0.30"))  # max 30% of cash per trade
+MIN_CASH_FLOOR = float(os.getenv("MIN_CASH_FLOOR", "4.0"))  # never trade below this cash balance
 
 # Persistence
 STATE_FILE = os.getenv("STATE_FILE", "state.json")

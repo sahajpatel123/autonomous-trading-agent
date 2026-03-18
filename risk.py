@@ -59,6 +59,15 @@ class RiskManager:
             logger.info(f"Trade rejected: {reason}")
             return False, reason
 
+        # 5b. Cash floor — never let balance drop below dead floor
+        if cash - size_usd < config.MIN_CASH_FLOOR:
+            reason = (
+                f"Trade would reduce cash to ${cash - size_usd:.2f}, "
+                f"below MIN_CASH_FLOOR ${config.MIN_CASH_FLOOR}"
+            )
+            logger.info(f"Trade rejected: {reason}")
+            return False, reason
+
         # 6. Daily loss limit
         if self.is_daily_limit_breached(daily_loss_usd):
             reason = (
