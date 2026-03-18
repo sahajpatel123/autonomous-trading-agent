@@ -4,42 +4,73 @@ Handles market fetching, order execution, and portfolio queries.
 """
 
 import logging
+import os
 from typing import Optional
 
+from dotenv import load_dotenv
 from py_clob_client.client import ClobClient
-from py_clob_client.clob_types import MarketOrderArgs, OrderType, OpenOrderParams
-from py_clob_client.order_builder.constants import BUY
+from py_clob_client.constants import POLYGON
+from py_clob_client.clob_types import MarketOrderArgs, OrderType, OpenOrderParams, BalanceAllowanceParams, AssetType
 
 import config
 
 logger = logging.getLogger(__name__)
 
+load_dotenv()
+
 
 class PolymarketClient:
     def __init__(self):
-        if not config.POLYMARKET_PRIVATE_KEY:
+        self._private_key = os.getenv("POLYMARKET_PRIVATE_KEY", "").strip()
+        self._address = os.getenv("POLYMARKET_ADDRESS", "").strip()
+
+        if not self._private_key:
             raise ValueError("POLYMARKET_PRIVATE_KEY not set")
-        if not config.POLYMARKET_ADDRESS:
+        if not self._address:
             raise ValueError("POLYMARKET_ADDRESS not set")
 
         self._client = ClobClient(
-            config.CLOB_HOST,
-            key=config.POLYMARKET_PRIVATE_KEY,
-            chain_id=config.CHAIN_ID,
+            host="https://clob.polymarket.com",
+            key=self._private_key,
+            chain_id=POLYGON,
             signature_type=0,
-            funder=config.POLYMARKET_ADDRESS,
+            funder=self._address,
         )
-        # Derive API credentials from private key (deterministic)
-        self._client.set_api_creds(self._client.create_or_derive_api_creds())
+        creds = self._client.create_or_derive_api_creds()
+        self._client.set_api_creds(creds)
         logger.info("Polymarket client initialized")
 
-    def get_balance(self) -> float:
-        """Returns USDC balance in USD."""
+    def get_balance(self):
         try:
-            raw = self._client.get_balance()
-            return int(raw) / 1_000_000  # USDC has 6 decimals
+            import requests
+
+            # Proxy wallet address where deposited funds are held
+            proxy = "0xa90C8AbAB5306401514Bc5573FC4F2422fc1D9Ca"
+
+            # USDC contract on Polygon
+            usdc = "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174"
+
+            # eth_call to balanceOf(proxy)
+            call_data = "0x70a08231" + "000000000000000000000000" + proxy[2:].lower()
+
+            payload = {
+                "jsonrpc": "2.0",
+                "method": "eth_call",
+                "params": [{"to": usdc, "data": call_data}, "latest"],
+                "id": 1
+            }
+
+            r = requests.post(
+                "https://polygon-bor-rpc.publicnode.com",
+                json=payload,
+                timeout=10
+            )
+            result = r.json().get("result", "0x0")
+            balance = int(result, 16) / 1_000_000
+            return balance
+
         except Exception as e:
-            logger.error(f"Failed to get balance: {e}")
+            print(f"Failed to get balance: {e}")
             return 0.0
 
     def get_markets(self, limit: int = 20) -> list[dict]:
