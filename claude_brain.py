@@ -36,7 +36,6 @@ Rules:
 Return ONLY a JSON array:
 [{{
   "market_id": str,
-  "token_id": "<use yes_token_id or no_token_id from the market data>",
   "position": "YES" or "NO",
   "size_usd": float (max 5.0),
   "confidence_score": float,
@@ -146,7 +145,7 @@ class ClaudeBrain:
             if not isinstance(d, dict):
                 continue
             # Ensure required fields are present
-            required = {"market_id", "token_id", "position", "size_usd", "confidence_score"}
+            required = {"market_id", "position", "size_usd", "confidence_score"}
             if not required.issubset(d.keys()):
                 logger.warning(f"Decision missing required fields: {d}")
                 continue

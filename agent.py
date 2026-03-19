@@ -130,9 +130,21 @@ def _run_cycle(
         if not approved:
             continue
 
+        # Resolve token_id from market data based on position direction
+        market_lookup = {m["market_id"]: m for m in markets}
+        market = market_lookup.get(decision["market_id"], {})
+        if decision.get("position", "YES").upper() == "YES":
+            token_id = market.get("yes_token_id", "")
+        else:
+            token_id = market.get("no_token_id", "")
+
+        if not token_id:
+            logger.error(f"Could not resolve token_id for market {decision['market_id']}")
+            continue
+
         # Place the order
         result = polymarket.place_market_order(
-            token_id=decision["token_id"],
+            token_id=token_id,
             amount_usd=decision["size_usd"],
         )
         trade_logger.log_execution(decision, result)
