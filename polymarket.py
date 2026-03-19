@@ -152,16 +152,19 @@ class PolymarketClient:
                 return None
 
     def get_positions(self) -> list[dict]:
-        """Return current open positions."""
+        """Return current open positions derived from open orders."""
+        from py_clob_client.clob_types import OpenOrderParams
         try:
-            raw = self._client.get_positions()
+            raw = self._client.get_orders(OpenOrderParams()) or []
             positions = []
-            for p in (raw or []):
+            for p in raw:
+                size = float(p.get("size_matched", 0) or p.get("original_size", 0) or 0)
+                price = float(p.get("price", 0) or 0)
                 positions.append({
-                    "token_id": p.get("token_id", ""),
-                    "size_shares": float(p.get("size", 0)),
-                    "avg_price": float(p.get("average_entry_price", 0)),
-                    "current_value_usd": float(p.get("size", 0)) * float(p.get("average_entry_price", 0)),
+                    "token_id": p.get("asset_id", ""),
+                    "size_shares": size,
+                    "avg_price": price,
+                    "current_value_usd": size * price,
                 })
             return positions
         except Exception as e:
