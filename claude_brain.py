@@ -126,11 +126,13 @@ class ClaudeBrain:
             logger.warning("Claude returned no text content")
             return []
 
-        # Claude should return raw JSON — but defensively strip any markdown fences
-        cleaned = text_content
-        if cleaned.startswith("```"):
-            lines = cleaned.split("\n")
-            cleaned = "\n".join(lines[1:-1]) if len(lines) > 2 else cleaned
+        # Extract the JSON array by finding the outermost [ ... ]
+        start = text_content.find("[")
+        end = text_content.rfind("]")
+        if start == -1 or end == -1 or end < start:
+            logger.error(f"No JSON array found in Claude response:\n{text_content[:500]}")
+            return []
+        cleaned = text_content[start:end + 1]
 
         try:
             decisions = json.loads(cleaned)
