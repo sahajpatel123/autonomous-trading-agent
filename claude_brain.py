@@ -122,6 +122,8 @@ class ClaudeBrain:
                 text_content = block.text.strip()
                 break
 
+        logger.info(f"Claude raw response: {text_content}")
+
         if not text_content:
             logger.warning("Claude returned no text content")
             return []

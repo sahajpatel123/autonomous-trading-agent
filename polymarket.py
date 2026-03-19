@@ -75,63 +75,66 @@ class PolymarketClient:
 
     def get_markets(self, limit: int = 20) -> list[dict]:
         """
-        Fetch open prediction markets with current YES/NO prices.
+        Fetch active, high-volume markets from the Gamma API.
         Returns a list of market dicts ready to send to Claude.
         """
         import requests as _requests
         markets = []
         try:
-            cursor = None
-            while len(markets) < limit:
-                params = {"limit": 100}
-                if cursor:
-                    params["next_cursor"] = cursor
-                resp = _requests.get(
-                    "https://clob.polymarket.com/markets",
-                    params=params,
-                    timeout=10,
-                )
-                resp.raise_for_status()
-                body = resp.json()
-                raw_markets = body.get("data", [])
-                if not raw_markets:
+            resp = _requests.get(
+                "https://gamma-api.polymarket.com/markets",
+                params={
+                    "active": "true",
+                    "closed": "false",
+                    "limit": 50,
+                    "order": "volume24hr",
+                    "ascending": "false",
+                },
+                timeout=10,
+            )
+            resp.raise_for_status()
+            raw_markets = resp.json()
+
+            for m in raw_markets:
+                volume24 = float(m.get("volume24hr") or 0)
+                liquidity = float(m.get("liquidity") or 0)
+                if volume24 < 100 or liquidity < 500:
+                    continue
+
+                # Extract YES/NO token IDs and prices from the tokens list
+                tokens = m.get("tokens") or []
+                yes_tok = next((t for t in tokens if str(t.get("outcome", "")).upper() == "YES"), None)
+                no_tok = next((t for t in tokens if str(t.get("outcome", "")).upper() == "NO"), None)
+
+                # Fall back to outcomePrices array if tokens list is absent
+                raw_op = m.get("outcomePrices") or []
+                if isinstance(raw_op, str):
+                    import json as _json
+                    raw_op = _json.loads(raw_op)
+                outcome_prices = raw_op
+                yes_price = float(yes_tok["price"]) if yes_tok and yes_tok.get("price") is not None \
+                    else (float(outcome_prices[0]) if outcome_prices else 0.0)
+                no_price = float(no_tok["price"]) if no_tok and no_tok.get("price") is not None \
+                    else (float(outcome_prices[1]) if len(outcome_prices) > 1 else round(1 - yes_price, 4))
+
+                yes_token_id = yes_tok["token_id"] if yes_tok and yes_tok.get("token_id") else m.get("conditionId", "")
+                no_token_id = no_tok["token_id"] if no_tok and no_tok.get("token_id") else ""
+
+                markets.append({
+                    "market_id": m.get("conditionId", ""),
+                    "question": m.get("question", ""),
+                    "end_date": m.get("endDate", ""),
+                    "yes_token_id": yes_token_id,
+                    "no_token_id": no_token_id,
+                    "yes_price": round(yes_price, 4),
+                    "no_price": round(no_price, 4),
+                    "liquidity_usd": round(liquidity, 2),
+                    "volume_usd": round(float(m.get("volume") or 0), 2),
+                    "volume_24hr": round(volume24, 2),
+                })
+
+                if len(markets) >= limit:
                     break
-
-                for m in raw_markets:
-                    if not m.get("accepting_orders") or m.get("closed") or not m.get("active"):
-                        continue
-
-                    tokens = m.get("tokens", [])
-                    if len(tokens) < 2:
-                        continue
-
-                    yes_tok = next((t for t in tokens if t.get("outcome", "").upper() == "YES"), tokens[0])
-                    no_tok = next((t for t in tokens if t.get("outcome", "").upper() == "NO"), tokens[1])
-
-                    yes_price = float(yes_tok.get("price", 0) or 0)
-                    no_price = float(no_tok.get("price", 0) or 0)
-
-                    markets.append({
-                        "market_id": m.get("condition_id", ""),
-                        "question": m.get("question", ""),
-                        "end_date": m.get("end_date_iso", ""),
-                        "yes_token_id": yes_tok["token_id"],
-                        "no_token_id": no_tok["token_id"],
-                        "yes_price": round(yes_price, 4),
-                        "no_price": round(no_price, 4),
-                        "volume_usd": 0.0,
-                        "liquidity_usd": 0.0,
-                        "active": True,
-                        "closed": False,
-                    })
-
-                    if len(markets) >= limit:
-                        break
-
-                next_cursor = body.get("next_cursor")
-                if not next_cursor or next_cursor == cursor:
-                    break
-                cursor = next_cursor
 
         except Exception as e:
             logger.error(f"Failed to fetch markets: {e}")
