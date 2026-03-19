@@ -78,11 +78,6 @@ class RiskManager:
             return False, reason
 
         # 7. Required fields present
-        if not decision.get("token_id"):
-            reason = "Missing token_id in decision"
-            logger.info(f"Trade rejected: {reason}")
-            return False, reason
-
         if decision.get("position") not in ("YES", "NO"):
             reason = f"Invalid position value: {decision.get('position')}"
             logger.info(f"Trade rejected: {reason}")

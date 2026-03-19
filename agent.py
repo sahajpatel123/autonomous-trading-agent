@@ -124,27 +124,26 @@ def _run_cycle(
         portfolio = state.get_portfolio()
         daily_loss = state.get_daily_loss()
 
+        # Resolve token_id before risk check
+        market = next((m for m in markets if m["market_id"] == decision["market_id"]), None)
+        if not market:
+            logger.error(f"Market not found for decision: {decision['market_id']}")
+            continue
+        decision["token_id"] = market["yes_token_id"] if decision.get("position") == "YES" else market["no_token_id"]
+
+        if not decision["token_id"]:
+            logger.error(f"Could not resolve token_id for market {decision['market_id']}")
+            continue
+
         approved, reason = risk.check_trade(decision, portfolio, daily_loss)
         trade_logger.log_decision(decision, approved, reason)
 
         if not approved:
             continue
 
-        # Resolve token_id from market data based on position direction
-        market_lookup = {m["market_id"]: m for m in markets}
-        market = market_lookup.get(decision["market_id"], {})
-        if decision.get("position", "YES").upper() == "YES":
-            token_id = market.get("yes_token_id", "")
-        else:
-            token_id = market.get("no_token_id", "")
-
-        if not token_id:
-            logger.error(f"Could not resolve token_id for market {decision['market_id']}")
-            continue
-
         # Place the order
         result = polymarket.place_market_order(
-            token_id=token_id,
+            token_id=decision["token_id"],
             amount_usd=decision["size_usd"],
         )
         trade_logger.log_execution(decision, result)
