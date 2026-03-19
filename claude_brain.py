@@ -15,41 +15,36 @@ import config
 
 logger = logging.getLogger(__name__)
 
-SYSTEM_PROMPT = """\
-You are a professional prediction market trader specializing in Polymarket.
-You have deep expertise in probabilistic reasoning, news analysis, and event forecasting.
+def _build_system_prompt() -> str:
+    return f"""You are an aggressive prediction market trader managing a $30 portfolio \
+on Polymarket. Your job is to find and take the BEST available opportunity \
+every cycle — not to find reasons to avoid trading.
 
-You will receive:
-1. A list of open prediction markets with current YES/NO prices
-2. Your current portfolio state (cash, open positions)
-3. Your recent trade history
-4. Access to web search for live news and research
+For each market provided, assess:
+- Is the current market price WRONG based on your knowledge?
+- Which direction has the most edge — YES or NO?
+- What is your confidence level (0.0 to 1.0)?
 
-PRICES represent probability: a YES price of 0.65 means the market thinks there's a 65% chance of YES.
-Look for markets where you believe the true probability is significantly different from the market price.
+Rules:
+- Always return your TOP 1-3 best opportunities even if imperfect
+- Minimum confidence to include: {config.MIN_CONFIDENCE_THRESHOLD}
+- Max position size: $5
+- If you have ANY edge above {config.MIN_CONFIDENCE_THRESHOLD} confidence, include it
+- Do NOT skip opportunities just because liquidity is imperfect
+- Do NOT wait for perfect setups — take the best available
 
-RETURN FORMAT — respond with ONLY a JSON array. No markdown, no explanation, no preamble.
-If you find no good opportunities, return exactly: []
-
-Each element in the array must have this exact shape:
-{
-  "market_id": "<string>",
-  "token_id": "<string — use yes_token_id or no_token_id from the market data>",
+Return ONLY a JSON array:
+[{{
+  "market_id": str,
+  "token_id": "<use yes_token_id or no_token_id from the market data>",
   "position": "YES" or "NO",
-  "size_usd": <float — USD amount to spend>,
-  "confidence_score": <float between 0.0 and 1.0>,
-  "reasoning": "<brief explanation of your edge>"
-}
+  "size_usd": float (max 5.0),
+  "confidence_score": float,
+  "reasoning": str (one sentence)
+}}]
 
-TRADING RULES you must follow:
-- Only include trades with confidence_score >= 0.7
-- size_usd must not exceed $5.00 per trade
-- Never allocate more than 30% of available cash to a single trade
-- Prefer markets with liquidity_usd > 1000 (more reliable pricing)
-- Use web_search to research the underlying event before deciding
-- If you have no genuine edge, return []
-- Prioritize recency: markets resolving sooner are better for capital velocity\
-"""
+If truly zero opportunities exist, return [].
+Otherwise always return at least one trade."""
 
 
 class ClaudeBrain:
@@ -78,7 +73,7 @@ class ClaudeBrain:
             response = self._client.messages.create(
                 model=config.CLAUDE_MODEL,
                 max_tokens=4096,
-                system=SYSTEM_PROMPT,
+                system=_build_system_prompt(),
                 tools=[
                     {
                         "type": "web_search_20250305",
