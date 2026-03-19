@@ -204,6 +204,7 @@ class PolymarketClient:
             order_args = MarketOrderArgs(
                 token_id=token_id,
                 amount=amount_usd,
+                side="BUY",
             )
             signed = self._client.create_market_order(order_args)
             result = self._client.post_order(signed, OrderType.FOK)
