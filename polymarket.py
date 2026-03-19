@@ -78,46 +78,66 @@ class PolymarketClient:
         Fetch open prediction markets with current YES/NO prices.
         Returns a list of market dicts ready to send to Claude.
         """
+        import requests as _requests
         markets = []
         try:
-            response = self._client.get_simplified_markets()
-            raw_markets = response.get("data", []) if isinstance(response, dict) else []
+            cursor = None
+            while len(markets) < limit:
+                params = {"limit": 100}
+                if cursor:
+                    params["next_cursor"] = cursor
+                resp = _requests.get(
+                    "https://clob.polymarket.com/markets",
+                    params=params,
+                    timeout=10,
+                )
+                resp.raise_for_status()
+                body = resp.json()
+                raw_markets = body.get("data", [])
+                if not raw_markets:
+                    break
 
-            for m in raw_markets[:limit]:
-                tokens = m.get("clobTokenIds", [])
-                if len(tokens) < 2:
-                    continue
+                for m in raw_markets:
+                    if not m.get("accepting_orders") or m.get("closed") or not m.get("active"):
+                        continue
 
-                yes_token_id = tokens[0]
-                no_token_id = tokens[1]
+                    tokens = m.get("tokens", [])
+                    if len(tokens) < 2:
+                        continue
 
-                yes_price = self._get_price(yes_token_id)
-                no_price = self._get_price(no_token_id)
+                    yes_tok = next((t for t in tokens if t.get("outcome", "").upper() == "YES"), tokens[0])
+                    no_tok = next((t for t in tokens if t.get("outcome", "").upper() == "NO"), tokens[1])
 
-                if yes_price is None or no_price is None:
-                    continue
+                    yes_price = float(yes_tok.get("price", 0) or 0)
+                    no_price = float(no_tok.get("price", 0) or 0)
 
-                markets.append({
-                    "market_id": m.get("conditionId", m.get("id", "")),
-                    "question": m.get("question", ""),
-                    "end_date": m.get("endDate", ""),
-                    "yes_token_id": yes_token_id,
-                    "no_token_id": no_token_id,
-                    "yes_price": round(yes_price, 4),
-                    "no_price": round(no_price, 4),
-                    "volume_usd": float(m.get("volume", 0) or 0),
-                    "liquidity_usd": float(m.get("liquidity", 0) or 0),
-                    "active": m.get("active", True),
-                    "closed": m.get("closed", False),
-                })
+                    markets.append({
+                        "market_id": m.get("condition_id", ""),
+                        "question": m.get("question", ""),
+                        "end_date": m.get("end_date_iso", ""),
+                        "yes_token_id": yes_tok["token_id"],
+                        "no_token_id": no_tok["token_id"],
+                        "yes_price": round(yes_price, 4),
+                        "no_price": round(no_price, 4),
+                        "volume_usd": 0.0,
+                        "liquidity_usd": 0.0,
+                        "active": True,
+                        "closed": False,
+                    })
+
+                    if len(markets) >= limit:
+                        break
+
+                next_cursor = body.get("next_cursor")
+                if not next_cursor or next_cursor == cursor:
+                    break
+                cursor = next_cursor
 
         except Exception as e:
             logger.error(f"Failed to fetch markets: {e}")
 
-        # Filter to only active, non-closed markets
-        open_markets = [m for m in markets if m["active"] and not m["closed"]]
-        logger.info(f"Fetched {len(open_markets)} open markets")
-        return open_markets
+        logger.info(f"Fetched {len(markets)} open markets")
+        return markets
 
     def _get_price(self, token_id: str) -> Optional[float]:
         """Get best buy price for a token (represents probability)."""
